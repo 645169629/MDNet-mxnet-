@@ -87,7 +87,7 @@ def get_mdnet_symbol():
         binary_losses.append(fc6_stop_grad)
         binary_losses.append(binary_loss)
         return binary_losses
-        
+
 if __name__=='__main__':
     ## Init dataset ##
     with open(data_path, 'rb') as fp:
@@ -103,22 +103,18 @@ if __name__=='__main__':
     binary_losses = get_mdnet_symbol()
     # 初始化模型
     mods = []
-    # 保存fc6层参数
-    fc6_params = [{}]*K
-    # 初始化模型
     for i in range(len(binary_losses)/2):
         mod = mx.mod.Module(mx.symbol.Group([binary_losses[i*2],binary_losses[i*2+1]]))
-        mod.bind(data_shapes=[('data', (128,3, 107, 107))])
         mods.append(mod)
 
     optimizer_paramss = {'momentum': 0.9,
                             'wd': 0.0005,
                             'learning_rate': 0.1,
                             'clip_gradient': 10}
-
     for i in range(50):
         print "==== Start Cycle %d ====" % (i)
         k_list = np.random.permutation(K)
+        #k_list = np.array(range(1))
         prec = np.zeros(K)
         for j,k in enumerate(k_list):
             tic = time.time()
@@ -133,32 +129,29 @@ if __name__=='__main__':
                 neg_regions = neg_regions.numpy()
             pos_data = nd.array(pos_regions)
             neg_data = nd.array(neg_regions)
-            data = nd.concat(pos_data,neg_data,dim=0)
-            data = mx.io.DataBatch([data])        
+            nd_data = nd.concat(pos_data,neg_data,dim=0) 
+            data = mx.io.DataBatch([nd_data]) 
+            
             mod = mods[k]
+            if(not mod.binded):
+                mod.bind(data_shapes=[('data', nd_data.shape)])
             if(i == 0):
                 if(j == 0):
-                    # 第一次训练，模型conv1参数从文件加载
                     mod.init_params(arg_params=load_model_from_file(init_model_path),aux_params=None,allow_missing=True)
                 else:
-                    # 第一轮训练，conv1,conv2,conv3,fc4,fc5参数共享，fc6随即初始化
                     mod.init_params(arg_params=shared_params,aux_params=None,allow_missing=True)
             else:
-                mod.init_params(arg_params=dict(shared_params.items()+fc6_params[k].items()),aux_params=None,allow_missing=False)
-            
-            mod.init_optimizer(optimizer='sgd', optimizer_params=optimizer_params)
+                mod.set_params(arg_params=dict(shared_params.items()+fc6_params[k].items()),aux_params=None)
+
+            if(not mod.optimizer_initialized):
+                mod.init_optimizer(optimizer='sgd', optimizer_params=optimizer_params)
             # 训练模型
             mod.forward(data)
-            print('--------------------------------------')
-            print(mod.get_params()[0]['fc4_weight'])
-            print('--------------------------------------')
             pos_score = nd.slice_axis(mod.get_outputs()[0],axis=0,begin=0,end=32)
             neg_score = nd.slice_axis(mod.get_outputs()[0],axis=0,begin=32,end=128)
             mod.backward()
             mod.update()
-            print('--------------------------------------')
-            print(mod.get_params()[0]['fc4_weight'])
-            print('--------------------------------------')
+
             
             shared_params = {'conv1_weight':mod.get_params()[0]['conv1_weight'],
                             'conv1_bias':mod.get_params()[0]['conv1_bias'],

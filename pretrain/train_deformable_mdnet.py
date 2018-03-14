@@ -39,39 +39,42 @@ def load_model_from_file(model_path):
         biaes.append(nd.array(bias[:,0]))
     arg_params={'conv1_weight':weights[0],'conv2_weight':weights[1],'conv3_weight':weights[2],
                 'conv1_bias':biaes[0],'conv2_bias':biaes[1],'conv3_bias':biaes[2]}
+    return arg_params
 
 def get_mdnet_symbol():
     data = mx.sym.Variable('data')
     conv1 = mx.symbol.Convolution(data=data, name='conv1', num_filter=96,
                                 kernel=(7,7), stride=(2,2))
     conv1_relu = mx.symbol.Activation(name='conv1_relu', data=conv1, act_type='relu')
-    pool1 = mx.symbol.Pooling(name='pool1', data=conv1_relu, kernel=(3,3),
+    conv1_lrn = mx.symbol.LRN(data=conv1_relu, alpha=0.0001, beta=0.75, knorm=2, nsize=5, name='conv1_lrn')
+    pool1 = mx.symbol.Pooling(name='pool1', data=conv1_lrn, kernel=(3,3),
                             stride=(2,2), pool_type='max')
     conv2 = mx.symbol.Convolution(data = pool1, name='conv2', num_filter=256,
                                 kernel=(5,5), stride=(2,2))
     conv2_relu = mx.symbol.Activation(name='conv2_relu', data=conv2, act_type='relu')
-    pool2 = mx.symbol.Pooling(name='pool2', data=conv2_relu, kernel=(3,3),
+    conv2_lrn = mx.symbol.LRN(data=conv2_relu, alpha=0.0001, beta=0.75, knorm=2, nsize=5, name='conv2_lrn')
+    pool2 = mx.symbol.Pooling(name='pool2', data=conv2_lrn, kernel=(3,3),
                             stride=(2,2), pool_type='max')
     conv3 = mx.symbol.Convolution(data = pool2, name='conv3', num_filter=512,
                                 kernel=(3,3), stride=(1,1))
     conv3_relu = mx.symbol.Activation(name='conv3_relu', data=conv3, act_type='relu')
     conv3_relu_reshape = mx.symbol.reshape(data=conv3_relu, shape=(0,-1), name='conv3_relu_reshape')
     fc4_drop_out = mx.symbol.Dropout(data=conv3_relu_reshape,p=0.5, name='fc4_drop_out')
-    fc4_weight = mx.sym.var('fc4_weight', lr_mult=10)
+    fc4_weight = mx.symbol.Variable('fc4_weight', lr_mult=10)
     fc4 = mx.symbol.FullyConnected(data=fc4_drop_out, num_hidden=512, name='fc4',weight=fc4_weight)
     fc4_relu = mx.symbol.Activation(data=fc4,act_type='relu',name='fc4_relu')
     fc5_drop_out = mx.symbol.Dropout(data=fc4_relu, p=0.5,name='fc5_drop_out')
-    fc5_weight = mx.sym.var('fc5_weight', lr_mult=10)
+    fc5_weight = mx.symbol.Variable('fc5_weight', lr_mult=10)
     fc5 = mx.symbol.FullyConnected(data=fc5_drop_out, num_hidden=512, name='fc5', weight=fc5_weight)
     fc5_relu = mx.symbol.Activation(data=fc5,act_type='relu',name='fc5_relu')
 
     binary_losses = []
     for i in range(K):
         fc6_drop_out = mx.symbol.Dropout(data=fc5_relu,name='fc6_'+str(i)+'_drop_out',p=0.5)
-        fc6_weight = mx.sym.var('fc6_'+str(i)+'_weight', lr_mult=10)
+        fc6_weight = mx.symbol.Variable('fc6_'+str(i)+'_weight', lr_mult=10)
         fc6 = mx.symbol.FullyConnected(data=fc6_drop_out, name='fc6_'+str(i), num_hidden=2,weight=fc6_weight)
         fc6_stop_grad = mx.symbol.BlockGrad(fc6)
-        print(fc6.list_outputs())
+        #print(fc6.list_outputs())
         '''binary_loss_stop_grad = mx.symbol.BlockGrad(mx.symbol.sum(mx.symbol.slice_axis(-mx.symbol.log_softmax(mx.symbol.slice_axis(fc6,axis=0,begin=0,end=32)),
                                                                                 axis=1,begin=1,end=2))
                                                 +
@@ -107,14 +110,9 @@ if __name__=='__main__':
         mod = mx.mod.Module(mx.symbol.Group([binary_losses[i*2],binary_losses[i*2+1]]))
         mods.append(mod)
 
-    optimizer_paramss = {'momentum': 0.9,
-                            'wd': 0.0005,
-                            'learning_rate': 0.1,
-                            'clip_gradient': 10}
     for i in range(50):
         print "==== Start Cycle %d ====" % (i)
         k_list = np.random.permutation(K)
-        #k_list = np.array(range(1))
         prec = np.zeros(K)
         for j,k in enumerate(k_list):
             tic = time.time()

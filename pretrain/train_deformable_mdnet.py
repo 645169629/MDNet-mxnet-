@@ -41,7 +41,7 @@ def load_model_from_file(model_path):
                 'conv1_bias':biaes[0],'conv2_bias':biaes[1],'conv3_bias':biaes[2]}
     return arg_params
 
-def get_mdnet_symbol():
+def get_mdnet_symbol(K):
     data = mx.sym.Variable('data')
     conv1 = mx.symbol.Convolution(data=data, name='conv1', num_filter=96,
                                 kernel=(7,7), stride=(2,2))
@@ -89,7 +89,7 @@ def get_mdnet_symbol():
                                                                                 axis=1,begin=0,end=1)))
         binary_losses.append(fc6_stop_grad)
         binary_losses.append(binary_loss)
-        return binary_losses
+    return binary_losses
 
 if __name__=='__main__':
     ## Init dataset ##
@@ -103,7 +103,9 @@ if __name__=='__main__':
         img_dir = os.path.join(img_home, seqname)
         dataset[k] = RegionDataset(img_dir, img_list, gt, opts)
 
-    binary_losses = get_mdnet_symbol()
+    binary_losses = get_mdnet_symbol(K)
+    # 保存fc6层参数
+    fc6_params = [{}]*K
     # 初始化模型
     mods = []
     for i in range(len(binary_losses)/2):

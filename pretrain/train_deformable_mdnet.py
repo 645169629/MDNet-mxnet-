@@ -42,6 +42,10 @@ def load_model_from_file(model_path):
                 'conv1_bias':biaes[0],'conv2_bias':biaes[1],'conv3_bias':biaes[2]}
     return arg_params
 
+def save_model(models,epoch):
+    for i in range(len(models)):
+        models[i].save_checkpoint('dcn_mdnet'+str(i),epoch)
+
 def get_mdnet_symbol(K):
     data = mx.sym.Variable('data')
     conv1 = mx.symbol.Convolution(data=data, name='conv1', num_filter=96,
@@ -113,6 +117,7 @@ if __name__=='__main__':
         mod = mx.mod.Module(mx.symbol.Group([binary_losses[i*2],binary_losses[i*2+1]]))
         mods.append(mod)
 
+    best_prec = 0.
     for i in range(50):
         print "==== Start Cycle %d ====" % (i)
         k_list = np.random.permutation(K)
@@ -174,3 +179,7 @@ if __name__=='__main__':
             print "Cycle %2d, K %2d (%2d), Loss %.3f, Prec %.3f, Time %.3f"%(i,j,k,float(mod.get_outputs()[1].asnumpy()),prec[k],toc)
         cur_prec = prec.mean()
         print "Mean Precision: %.3f" % (cur_prec)
+        if cur_prec > best_prec:
+            best_prec = cur_prec
+            save_model(mods,i)
+            print('Model Saved')
